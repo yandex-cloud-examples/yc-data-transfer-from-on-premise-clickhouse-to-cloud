@@ -1,20 +1,22 @@
-# Infrastructure for the Yandex Cloud Managed Service for ClickHouse cluster and Data Transfer.
+# Infrastructure for the Yandex Cloud Managed Service for ClickHouse cluster and Data Transfer
 #
-# RU: https://cloud.yandex.ru/docs/managed-clickhouse/tutorials/data-migration
-# EN: https://cloud.yandex.com/en/docs/managed-clickhouse/tutorials/data-migration
+# RU: https://yandex.cloud/ru/docs/managed-clickhouse/tutorials/data-migration
+# EN: https://yandex.cloud/en/docs/managed-clickhouse/tutorials/data-migration
 #
-# Set source and target clusters settings.
+# Specify the following settings:
 locals {
   # Source ClickHouse server settings:
-  source_user    = ""   # Set the source ClickHouse server username.
-  source_db_name = ""   # Set the source ClickHouse server database name.
-  source_pwd     = ""   # Set the source ClickHouse server password.
-  source_host    = ""   # Set the source ClickHouse server IP address or FQDN.
-  source_port    = 9000 # Set the source ClickHouse server port number that Data Transfer will use for connections.
+  source_user        = ""     # ClickHouse server username
+  source_db_name     = ""     # ClickHouse server database name
+  source_pwd         = ""     # ClickHouse server password
+  source_host        = ""     # ClickHouse server IP address or FQDN
+  source_shard       = ""     # ClickHouse server shard name
+  source_http_port   = "8123" # TCP port number for the HTTP interface of the ClickHouse server
+  source_native_port = "9000" # TCP port number for the native interface of the ClickHouse server
   # Target cluster settings:
-  target_clickhouse_version = "" # Set the ClickHouse version.
-  target_user               = "" # Set the target cluster username.
-  target_password           = "" # Set the target cluster password.
+  target_clickhouse_version = "" # Desired version of ClickHouse. For available versions, see the documentation main page: https://yandex.cloud/en/docs/managed-clickhouse/.
+  target_user               = "" # Username of the ClickHouse cluster
+  target_password           = "" # ClickHouse user's password
 }
 
 resource "yandex_vpc_network" "network" {
@@ -37,7 +39,14 @@ resource "yandex_vpc_security_group" "security-group" {
   ingress {
     description    = "Allow connections to the cluster from the Internet"
     protocol       = "TCP"
-    port           = local.source_port
+    port           = local.source_http_port
+    v4_cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description    = "Allow connections to the cluster from the Internet"
+    protocol       = "TCP"
+    port           = local.source_native_port
     v4_cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -72,8 +81,9 @@ resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
   }
 
   host {
+    type      = "CLICKHOUSE"
     zone      = "ru-central1-a"
-    subnet_id = "yandex_vpc_subnet.subnet-a.id"
+    subnet_id = yandex_vpc_subnet.subnet-a.id
   }
 
   database {
@@ -84,8 +94,7 @@ resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
     name     = local.target_user
     password = local.target_password
     permission {
-      database_name = local.target_db_name
-      roles         = ["ALL"]
+      database_name = local.source_db_name
     }
   }
 }
@@ -96,15 +105,21 @@ resource "yandex_datatransfer_endpoint" "clickhouse-source" {
   settings {
     clickhouse_source {
       connection {
-        on_premise {
-          hosts = [local.source_host]
-          port  = local.source_port
+        connection_options {
+          on_premise {
+            shards {
+              name  = local.source_shard
+              hosts = [local.source_host]
+            }
+            http_port   = local.source_http_port
+            native_port = local.source_native_port
+          }
+          database = local.source_db_name
+          user     = local.source_user
+          password {
+            raw = local.source_pwd
+          }
         }
-      }
-      database = local.source_db_name
-      user     = local.source_user
-      password {
-        raw = local.source_pwd
       }
     }
   }
@@ -116,12 +131,14 @@ resource "yandex_datatransfer_endpoint" "managed-clickhouse-target" {
   settings {
     clickhouse_target {
       connection {
-        mdb_cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
-      }
-      database = local.source_db_name
-      user     = local.target_user
-      password {
-        raw = local.target_password
+        connection_options {
+          mdb_cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
+          database       = local.source_db_name
+          user           = local.target_user
+          password {
+            raw = local.target_password
+          }
+        }
       }
     }
   }
@@ -132,5 +149,5 @@ resource "yandex_datatransfer_transfer" "clickhouse-transfer" {
   name        = "transfer-from-onpremise-clickhouse-to-managed-clickhouse"
   source_id   = yandex_datatransfer_endpoint.clickhouse-source.id
   target_id   = yandex_datatransfer_endpoint.managed-clickhouse-target.id
-  type        = "SNAPSHOT_ONLY" # Copy all data from the source server.
+  type        = "SNAPSHOT_ONLY" # Copy all data from the source server
 }
