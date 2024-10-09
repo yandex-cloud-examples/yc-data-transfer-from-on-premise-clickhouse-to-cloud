@@ -17,6 +17,8 @@ locals {
   target_clickhouse_version = "" # Desired version of ClickHouse. For available versions, see the documentation main page: https://yandex.cloud/en/docs/managed-clickhouse/.
   target_user               = "" # Username of the ClickHouse cluster
   target_password           = "" # ClickHouse user's password
+  # Setting for the YC CLI that allows running CLI command to activate the transfer
+  profile_name = "" # Name of the YC CLI profile
 }
 
 resource "yandex_vpc_network" "network" {
@@ -34,6 +36,7 @@ resource "yandex_vpc_subnet" "subnet-a" {
 
 resource "yandex_vpc_security_group" "security-group" {
   description = "Security group for the Managed Service for ClickHouse cluster"
+  name        = "ch-mch-sg"
   network_id  = yandex_vpc_network.network.id
 
   ingress {
@@ -68,6 +71,7 @@ resource "yandex_vpc_security_group" "security-group" {
 resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
   name               = "clickhouse-cluster"
   description        = "Managed Service for ClickHouse cluster"
+  version            = local.target_clickhouse_version
   environment        = "PRODUCTION"
   network_id         = yandex_vpc_network.network.id
   security_group_ids = [yandex_vpc_security_group.security-group.id]
@@ -150,4 +154,7 @@ resource "yandex_datatransfer_transfer" "clickhouse-transfer" {
   source_id   = yandex_datatransfer_endpoint.clickhouse-source.id
   target_id   = yandex_datatransfer_endpoint.managed-clickhouse-target.id
   type        = "SNAPSHOT_ONLY" # Copy all data from the source server
+  provisioner "local-exec" {
+    command = "yc --profile ${local.profile_name} datatransfer transfer activate ${yandex_datatransfer_transfer.clickhouse-transfer.id}"
+  }
 }
