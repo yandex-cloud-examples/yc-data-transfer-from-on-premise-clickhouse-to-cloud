@@ -76,6 +76,10 @@ resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
   network_id         = yandex_vpc_network.network.id
   security_group_ids = [yandex_vpc_security_group.security-group.id]
 
+  lifecycle {
+    ignore_changes = [database, user,]
+  }
+
   clickhouse {
     resources {
       resource_preset_id = "s2.micro" # 2 vCPU, 8 GB RAM
@@ -89,17 +93,20 @@ resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
     zone      = "ru-central1-a"
     subnet_id = yandex_vpc_subnet.subnet-a.id
   }
+}
 
-  database {
-    name = local.source_db_name
-  }
+resource "yandex_mdb_clickhouse_database" "clickhouse-database" {
+  cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
+  name       = local.source_db_name
+}
 
-  user {
-    name     = local.target_user
-    password = local.target_password
-    permission {
-      database_name = local.source_db_name
-    }
+resource "yandex_mdb_clickhouse_user" "clickhouse-user" {
+  cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
+  name       = local.target_user
+  password   = local.target_password
+
+  permission {
+      database_name = yandex_mdb_clickhouse_database.clickhouse-database.name
   }
 }
 
