@@ -86,9 +86,9 @@ resource "yandex_mdb_clickhouse_cluster_v2" "clickhouse-cluster" {
 
   hosts = {
     "ch-host1" = {
-      type      = "CLICKHOUSE"
-      zone      = "ru-central1-a"
-      subnet_id = yandex_vpc_subnet.subnet-a.id
+      type       = "CLICKHOUSE"
+      zone       = "ru-central1-a"
+      subnet_id  = yandex_vpc_subnet.subnet-a.id
       shard_name = "shard01"
     }
   }
@@ -114,7 +114,7 @@ resource "yandex_mdb_clickhouse_user" "clickhouse-user" {
   password   = local.target_password
 
   permission {
-      database_name = yandex_mdb_clickhouse_database.clickhouse-database.name
+    database_name = yandex_mdb_clickhouse_database.clickhouse-database.name
   }
 }
 
