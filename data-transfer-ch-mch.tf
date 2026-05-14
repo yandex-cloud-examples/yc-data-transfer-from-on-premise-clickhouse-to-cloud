@@ -68,7 +68,7 @@ resource "yandex_vpc_security_group" "security-group" {
   }
 }
 
-resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
+resource "yandex_mdb_clickhouse_cluster_v2" "clickhouse-cluster" {
   name               = "clickhouse-cluster"
   description        = "Managed Service for ClickHouse cluster"
   version            = local.target_clickhouse_version
@@ -76,37 +76,45 @@ resource "yandex_mdb_clickhouse_cluster" "clickhouse-cluster" {
   network_id         = yandex_vpc_network.network.id
   security_group_ids = [yandex_vpc_security_group.security-group.id]
 
-  lifecycle {
-    ignore_changes = [database, user,]
-  }
-
-  clickhouse {
-    resources {
+  clickhouse = {
+    resources = {
       resource_preset_id = "s2.micro" # 2 vCPU, 8 GB RAM
       disk_type_id       = "network-hdd"
       disk_size          = 10 # GB
     }
   }
 
-  host {
-    type      = "CLICKHOUSE"
-    zone      = "ru-central1-a"
-    subnet_id = yandex_vpc_subnet.subnet-a.id
+  hosts = {
+    "ch-host1" = {
+      type       = "CLICKHOUSE"
+      zone       = "ru-central1-a"
+      subnet_id  = yandex_vpc_subnet.subnet-a.id
+      shard_name = "shard01"
+    }
+  }
+
+  shards = {
+    "shard01" = {}
+  }
+
+
+  maintenance_window {
+    type = "ANYTIME"
   }
 }
 
 resource "yandex_mdb_clickhouse_database" "clickhouse-database" {
-  cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
+  cluster_id = yandex_mdb_clickhouse_cluster_v2.clickhouse-cluster.id
   name       = local.source_db_name
 }
 
 resource "yandex_mdb_clickhouse_user" "clickhouse-user" {
-  cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
+  cluster_id = yandex_mdb_clickhouse_cluster_v2.clickhouse-cluster.id
   name       = local.target_user
   password   = local.target_password
 
   permission {
-      database_name = yandex_mdb_clickhouse_database.clickhouse-database.name
+    database_name = yandex_mdb_clickhouse_database.clickhouse-database.name
   }
 }
 
@@ -143,7 +151,7 @@ resource "yandex_datatransfer_endpoint" "managed-clickhouse-target" {
     clickhouse_target {
       connection {
         connection_options {
-          mdb_cluster_id = yandex_mdb_clickhouse_cluster.clickhouse-cluster.id
+          mdb_cluster_id = yandex_mdb_clickhouse_cluster_v2.clickhouse-cluster.id
           database       = local.source_db_name
           user           = local.target_user
           password {
